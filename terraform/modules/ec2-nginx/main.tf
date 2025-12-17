@@ -61,7 +61,8 @@ resource "aws_instance" "ec2" {
                   server_name ec2-instance.meghora.com;
 
                   location / {
-                      return 200 "Hello from Instance";
+                      default_type text/html;
+                      return 200 "<h1>Hello from Instance</h1>";
                   }
               }
 
@@ -69,7 +70,7 @@ resource "aws_instance" "ec2" {
                   listen 80;
                   server_name ec2-docker.meghora.com;
 
-                  location / {
+                  location /docker {
                       proxy_pass http://localhost:8080;
                   }
               }
