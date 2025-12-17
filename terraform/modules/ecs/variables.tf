@@ -1,27 +1,12 @@
-variable "vpc_id" {
-  type = string
-}
-
-variable "private_subnet_ids" {
-  type = list(string)
-}
-
-variable "alb_sg_id" {
-  type = string
-}
-
-variable "http_listener_arn" {
-  type = string
-}
-
-variable "task_role_arn" {
-  type = string
-}
-
-variable "db_endpoint" {
-  type = string
-}
-
-variable "db_secret_arn" {
-  type = string
-}
+variable "env" { type = string }
+variable "vpc_id" { type = string }
+variable "private_subnet_ids" { type = list(string) }
+variable "alb_sg_id" { type = string }
+variable "https_listener_arn" { type = string }
+variable "execution_role_arn" { type = string }
+variable "task_role_arn" { type = string }
+variable "db_endpoint" { type = string }
+variable "db_secret_arn" { type = string }
+variable "microservice_image" { type = string }
+variable "domain_name" { type = string }
+variable "tags" { type = map(string)}

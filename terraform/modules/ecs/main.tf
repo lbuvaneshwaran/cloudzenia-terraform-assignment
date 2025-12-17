@@ -1,11 +1,17 @@
-# ECS Cluster
+#################################
+# ECS CLUSTER
+#################################
 resource "aws_ecs_cluster" "this" {
-  name = "cloudzenia-ecs-cluster"
+  name = "cloudzenia-ecs-cluster-${var.env}"
+
+  tags = var.tags
 }
 
-# Security Group for ECS
+#################################
+# ECS SECURITY GROUP
+#################################
 resource "aws_security_group" "ecs_sg" {
-  name   = "cloudzenia-ecs-sg"
+  name   = "cloudzenia-ecs-sg-${var.env}"
   vpc_id = var.vpc_id
 
   ingress {
@@ -21,32 +27,49 @@ resource "aws_security_group" "ecs_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = var.tags
 }
 
-# Target Groups
+#################################
+# TARGET GROUPS
+#################################
 resource "aws_lb_target_group" "wordpress" {
-  name        = "tg-wordpress"
+  name        = "tg-wordpress-${var.env}"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200-399"
+    interval            = 30
+    timeout             = 10
+    healthy_threshold   = 2
+    unhealthy_threshold = 5
+  }
 }
 
 resource "aws_lb_target_group" "microservice" {
-  name        = "tg-microservice"
+  name        = "tg-microservice-${var.env}"
   port        = 3000
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 }
-# Listener Rules (Host-based routing)
+
+#################################
+# LISTENER RULES
+#################################
 resource "aws_lb_listener_rule" "wordpress" {
-  listener_arn = var.http_listener_arn
+  listener_arn = var.https_listener_arn
   priority     = 10
 
   condition {
     host_header {
-      values = ["wordpress.example.com"]
+      values = ["wordpress.${var.domain_name}"]
     }
   }
 
@@ -57,12 +80,12 @@ resource "aws_lb_listener_rule" "wordpress" {
 }
 
 resource "aws_lb_listener_rule" "microservice" {
-  listener_arn = var.http_listener_arn
+  listener_arn = var.https_listener_arn
   priority     = 20
 
   condition {
     host_header {
-      values = ["microservice.example.com"]
+      values = ["microservice.${var.domain_name}"]
     }
   }
 
@@ -71,27 +94,41 @@ resource "aws_lb_listener_rule" "microservice" {
     target_group_arn = aws_lb_target_group.microservice.arn
   }
 }
-# Task Definition – WordPress
+
+#################################
+# TASK DEFINITIONS
+#################################
 resource "aws_ecs_task_definition" "wordpress" {
-  family                   = "wordpress-task"
+  family                   = "wordpress-task-${var.env}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = "512"
   memory                   = "1024"
-  execution_role_arn       = var.task_role_arn
-  task_role_arn            = var.task_role_arn
 
-  container_definitions = jsonencode([
+  execution_role_arn = var.execution_role_arn
+  task_role_arn      = var.task_role_arn
+
+    container_definitions = jsonencode([
     {
       name  = "wordpress"
       image = "wordpress:latest"
+
       portMappings = [{
         containerPort = 80
       }]
+    logConfiguration = {
+    logDriver = "awslogs"
+    options = {
+      awslogs-group         = "/ecs/wordpress-dev"
+      awslogs-region        = "ap-south-1"
+      awslogs-stream-prefix = "wordpress"
+    }
+  }
       environment = [
         { name = "WORDPRESS_DB_HOST", value = var.db_endpoint },
         { name = "WORDPRESS_DB_NAME", value = "wordpress" }
       ]
+
       secrets = [
         {
           name      = "WORDPRESS_DB_USER"
@@ -104,35 +141,39 @@ resource "aws_ecs_task_definition" "wordpress" {
       ]
     }
   ])
+
 }
-# Task Definition – Microservice
+
 resource "aws_ecs_task_definition" "microservice" {
-  family                   = "microservice-task"
+  family                   = "microservice-task-${var.env}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = "256"
   memory                   = "512"
-  execution_role_arn       = var.task_role_arn
-  task_role_arn            = var.task_role_arn
+
+  execution_role_arn = var.execution_role_arn
+  task_role_arn      = var.task_role_arn
 
   container_definitions = jsonencode([
     {
       name  = "microservice"
-      image = "public.ecr.aws/docker/library/node:18"
-      command = ["node", "app.js"]
-      portMappings = [{
-        containerPort = 3000
-      }]
+      image = var.microservice_image
+      portMappings = [{ containerPort = 3000 }]
     }
   ])
 }
-# ECS Services
+
+#################################
+# ECS SERVICES
+#################################
 resource "aws_ecs_service" "wordpress" {
-  name            = "wordpress-service"
+  name            = "wordpress-service-${var.env}"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.wordpress.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+
+  health_check_grace_period_seconds = 180
 
   network_configuration {
     subnets         = var.private_subnet_ids
@@ -147,11 +188,13 @@ resource "aws_ecs_service" "wordpress" {
 }
 
 resource "aws_ecs_service" "microservice" {
-  name            = "microservice-service"
+  name            = "microservice-service-${var.env}"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.microservice.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+
+  health_check_grace_period_seconds = 180
 
   network_configuration {
     subnets         = var.private_subnet_ids
